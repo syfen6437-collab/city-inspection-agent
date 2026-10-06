@@ -1,0 +1,8 @@
+# Install a CUDA-compatible torch build separately when the local CUDA driver
+# requires a specific wheel. These ranges are compatible with Qwen3 inference.
+torch>=2.4
+transformers>=4.51
+accelerate>=1.2
+bitsandbytes>=0.45
+modelscope>=1.22
+safetensors>=0.5
