@@ -135,7 +135,7 @@ def render_prediction_docx(record: PredictionRecord, output_path: str | Path) ->
                 ]
                 for index, item in enumerate(prediction.diseases, 1)
             ],
-            widths=[0.4, 1.2, 1.0, 3.0, 0.65, 1.0, 0.8],
+            widths=[0.35, 0.9, 0.8, 2.3, 0.55, 0.9, 0.7],
         )
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
