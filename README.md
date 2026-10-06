@@ -12,7 +12,7 @@
 - 官方 ZIP 仅作为只读输入；原始文档、标签、模型权重和缓存不进入提交包。
 - 测试预测流程只读取测试文档，不读取训练标签，不调用外部推理 API，也不写入原始数据。
 - 模型不能确定的字段使用 `null` 或空数组；失败会保留 `blocked`/`failed` 状态，绝不伪造成功答案。
-- `predictions.v1.json` 是平台字段样例公开前的版本化适配格式，官方样例发布后只需替换 `city_agent/adapter.py`。
+- 结果 DOCX 按输入文件 stem 原名写入 `result/`，表格顺序与官方“信息提取报告”标签一致：概要字段表、建议明细表、完整病害明细表。`predictions.v1.json` 是内部审计格式，不替代平台要求的官方 JSON；平台若要求单独上传 JSON，应使用运行生成的 `result/standard_predictions.json`。
 
 ## 安装与模型
 
@@ -48,7 +48,7 @@ E:\6000RMB\city_inspection_agent\run_predict.cmd -Limit 1
 python scripts/prepare.py --source E:\6000RMB\赛题一城市基础设施定检报告问答分析.zip --split test
 python scripts/evaluate.py --source E:\6000RMB\赛题一城市基础设施定检报告问答分析.zip --limit 3
 python scripts/predict.py --source E:\6000RMB\赛题一城市基础设施定检报告问答分析.zip --split test
-python scripts/package.py --output city_inspection_agent.tar.gz
+python scripts/package.py --output city_inspection_agent.tar.gz --result-dir result
 streamlit run app.py
 ```
 
@@ -58,12 +58,13 @@ streamlit run app.py
 
 `result/` 目录包含：
 
-- 每份输入对应的结果 DOCX；
+- 每份输入对应的结果 DOCX（与输入文件 stem 一致，不添加 `_结果` 后缀）；
 - `predictions.v1.json`：结构化字段、病害、建议、证据来源和模型元数据；
+- `standard_predictions.json`：平台上传用的版本化 JSON 适配层；
 - `manifest.json`：输入数量、成功/阻塞/失败计数；
 - `audit.jsonl`：逐条可追溯审计记录。
 
-提交包只包含 `code/`、`design/`、`result/` 三个目录，且打包函数会拒绝超过 1 GB 的文件。
+提交包只包含 `code/`、`design/`、`result/` 三个目录，且打包函数会拒绝超过 1 GB 的文件。打包时会排除旧版本带 `_结果` 后缀的 DOCX，避免同一输入出现重复结果。
 
 ## 测试
 

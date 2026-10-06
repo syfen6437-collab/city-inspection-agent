@@ -15,7 +15,7 @@ from .schema import PredictionRecord
 
 def _safe(value: object) -> str:
     if value is None:
-        return "未提取"
+        return "无"
     if isinstance(value, bool):
         return "是" if value else "否"
     if isinstance(value, dict):
@@ -73,76 +73,69 @@ def render_prediction_docx(record: PredictionRecord, output_path: str | Path) ->
     title = document.add_paragraph(style="Title")
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _remove_paragraph_borders(title._p)
-    run = title.add_run("城市基础设施定检报告信息提取结果")
+    run = title.add_run("信息提取报告")
     run.bold = True
     document.add_paragraph(f"源文件：{_safe(record.file_name)}")
-    document.add_paragraph(f"处理状态：{_safe(record.status)}")
     if record.error:
         document.add_paragraph(f"错误信息：{_safe(record.error)}")
     if record.prediction is None:
         document.add_paragraph("模型未生成预测结果。本文件仅保留处理状态，不代表评测答案。")
     else:
         prediction = record.prediction
-        document.add_heading("一、概要字段", level=1)
+        document.add_paragraph("1、简要信息")
+        document.add_paragraph("从报告中提取桥梁定检的概要结论与关键指标，输出内容包括：")
         _table(
             document,
-            ["字段", "内容"],
+            ["字段", "示例", "说明"],
             [
-                ["桥梁/设施名称", prediction.bridge_name],
-                ["报告编号", prediction.report_number],
-                ["检测日期", prediction.inspection_date],
-                ["检测年份", prediction.inspection_year],
-                ["总体评分", prediction.overall_score],
-                ["总体等级", prediction.overall_grade],
-                ["构件评分", prediction.component_scores],
-            ], widths=[1.6, 4.9],
+                ["桥梁名称", prediction.bridge_name, "桥梁全称"],
+                ["报告编号", prediction.report_number, "检测报告编号"],
+                ["报告日期", prediction.inspection_date, "报告出具日期"],
+                ["总体评分", prediction.overall_score, "总体技术状况评分"],
+                ["总体等级", prediction.overall_grade, "总体技术状况等级"],
+                ["上部结构评分", prediction.component_scores.get("superstructure"), "上部结构技术状况评分"],
+                ["上部结构等级", prediction.component_scores.get("superstructure_grade"), "上部结构技术状况等级"],
+                ["下部结构评分", prediction.component_scores.get("substructure"), "下部结构技术状况评分"],
+                ["下部结构等级", prediction.component_scores.get("substructure_grade"), "下部结构技术状况等级"],
+                ["桥面系评分", prediction.component_scores.get("bridge_deck_system"), "桥面系技术状况评分"],
+                ["桥面系等级", prediction.component_scores.get("bridge_deck_system_grade"), "桥面系技术状况等级"],
+                ["上一次总体评分", None, "上一次定检总体技术状况评分"],
+                ["上一次总体等级", None, "上一次定检总体技术状况等级"],
+                ["病害发展趋势与具体说明", None, "与上一次定检相比病害的发展趋势和定量描述"],
+                ["总体结论", prediction.summary, "总体结论的简要说明"],
+                ["主要风险点", "；".join(prediction.key_risks), "比较严重或突出的病害描述"],
+                ["建议", "；".join(prediction.recommendations), "显示建议的情况说明"],
+            ], widths=[1.45, 3.55, 1.5],
         )
-        document.add_heading("二、摘要与重点风险", level=1)
+        document.add_paragraph("2、详细信息")
+        document.add_paragraph("（1）详细结论")
         if prediction.summary:
             document.add_paragraph(_safe(prediction.summary))
         for item in prediction.key_risks:
-            document.add_paragraph(_safe(item), style="List Bullet")
-        if not prediction.summary and not prediction.key_risks:
-            document.add_paragraph("未提取")
-        document.add_heading("三、病害明细", level=1)
+            document.add_paragraph(_safe(item))
+        document.add_paragraph("（2）建议明细")
+        recommendation_rows = []
+        for index, item in enumerate(prediction.recommendations, 1):
+            category = "立即处置" if any(word in item for word in ("立即", "应急")) else "预防性养护" if any(word in item for word in ("日常", "加强", "标识", "规范")) else "尽快维修"
+            recommendation_rows.append([index, category, item, ""])
+        _table(document, ["序号", "建议类别", "建议内容", "病害部位"], recommendation_rows or [["", "", "", ""]], widths=[0.45, 1.0, 4.25, 0.8])
+        document.add_paragraph("病害列表")
         _table(
             document,
-            ["位置", "类型", "描述", "是否新增", "前次状态", "发展程度", "测量", "证据"],
+            ["序号", "病害部位", "病害类型", "病害描述", "是否新增", "上一次定检状态", "发展程度"],
             [
                 [
+                    index,
                     item.location,
                     item.disease_type,
                     item.description,
                     item.is_new,
                     item.previous_status,
                     item.development,
-                    item.measurement,
-                    ", ".join(item.evidence_ids),
                 ]
-                for item in prediction.diseases
+                for index, item in enumerate(prediction.diseases, 1)
             ],
-            widths=[1.05, 0.72, 1.05, 0.55, 0.82, 0.72, 0.8, 0.79],
-        )
-        document.add_heading("四、维修建议与依据", level=1)
-        for item in prediction.recommendations:
-            document.add_paragraph(_safe(item), style="List Bullet")
-        for item in prediction.standards:
-            document.add_paragraph(_safe(item), style="List Bullet 2")
-        if not prediction.recommendations and not prediction.standards:
-            document.add_paragraph("未提取")
-        document.add_heading("五、证据链", level=1)
-        evidence_rows = []
-        seen_evidence: set[str] = set()
-        for item in prediction.evidence:
-            if item.source_id in seen_evidence:
-                continue
-            seen_evidence.add(item.source_id)
-            evidence_rows.append([item.source_id, item.kind, item.quote])
-        _table(
-            document,
-            ["来源编号", "类型", "原文摘录"],
-            evidence_rows or [["未提取", "", ""]],
-            widths=[1.15, 0.85, 4.5],
+            widths=[0.4, 1.2, 1.0, 3.0, 0.65, 1.0, 0.8],
         )
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)

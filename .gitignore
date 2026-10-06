@@ -6,5 +6,7 @@ cache/
 models/
 result/
 qa_render/
+qa_render_*/
+result_v2/
 *.tar.gz
 *.tar

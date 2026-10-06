@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from typing import Iterable, NamedTuple
 
-from .adapter import redact_public, write_predictions_v1
+from .adapter import redact_public, write_predictions_v1, write_standard_predictions
 from .document_parser import ParsedReport, parse_document_bytes, parse_document_path
 from .extractor import extract_report
 from .index import NgramIndex
@@ -167,6 +167,11 @@ def _report_id_for_name(file_name: str) -> str:
     return hashlib.sha256(file_name.encode("utf-8")).hexdigest()[:16]
 
 
+def result_docx_name(file_name: str) -> str:
+    """Use the input stem as the official result document identity."""
+    return f"{Path(file_name).stem}.docx"
+
+
 def _load_resume_records(path: Path) -> dict[str, PredictionRecord]:
     if not path.exists():
         return {}
@@ -229,7 +234,7 @@ def predict_reports(
     can_reuse_all = bool(inputs) and resume and all(
         item.report is not None
         and resume_records.get(item.report.report_id) is not None
-        and (result / f"{Path(item.file_name).stem}_结果.docx").exists()
+        and (result / result_docx_name(item.file_name)).exists()
         for item in inputs
     )
     if can_reuse_all:
@@ -247,7 +252,7 @@ def predict_reports(
         report = item.report
         report_id = report.report_id if report is not None else _report_id_for_name(item.file_name)
         existing = resume_records.get(report_id)
-        expected_docx = result / f"{Path(item.file_name).stem}_结果.docx"
+        expected_docx = result / result_docx_name(item.file_name)
         if existing is not None and expected_docx.exists():
             record = existing
         elif report is None:
@@ -268,6 +273,7 @@ def predict_reports(
             ),
         )
         write_predictions_v1(records, prediction_path, str(source), split, model.metadata)
+        write_standard_predictions(records, result / "standard_predictions.json")
     manifest = {
         "source": str(source),
         "split": split,
@@ -279,8 +285,8 @@ def predict_reports(
     _atomic_json(result / "manifest.json", manifest)
     prediction_payload = json.loads(prediction_path.read_text(encoding="utf-8"))
     audit_rows = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines() if line.strip()]
-    expected_docx = [result / f"{Path(item.file_name).stem}_结果.docx" for item in inputs]
-    actual_docx = list(result.glob("*_结果.docx"))
+    expected_docx = [result / result_docx_name(item.file_name) for item in inputs]
+    actual_docx = [path for path in result.glob("*.docx") if not path.name.endswith("_结果.docx")]
     validation_errors = []
     if len(records) != len(inputs):
         validation_errors.append(f"预测记录数 {len(records)} 与输入数 {len(inputs)} 不一致")

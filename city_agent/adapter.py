@@ -91,3 +91,28 @@ def validate_predictions_v1(path: str | Path) -> list[str]:
         if record.get("status") != "success" and not record.get("error"):
             errors.append(f"records[{index}] 非 success 记录必须有 error")
     return errors
+
+
+def write_standard_predictions(records: list[PredictionRecord], path: str | Path) -> None:
+    """Write the platform-facing JSON without leaking audit/model metadata.
+
+    The official sample schema is supplied by the competition platform. Until
+    that sample is exposed, this adapter keeps one stable, inspectable shape:
+    one prediction per source file and no labels or raw report text.
+    """
+    payload = {
+        "schema_version": "cqaip.track01.v1",
+        "task": "城市基础设施定检报告问答分析",
+        "records": [
+            {
+                "file_name": record.file_name,
+                "report_id": record.report_id,
+                "status": record.status,
+                "prediction": record.prediction.to_dict() if record.prediction else None,
+            }
+            for record in records
+        ],
+    }
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(redact_public(payload), ensure_ascii=False, indent=2), encoding="utf-8")

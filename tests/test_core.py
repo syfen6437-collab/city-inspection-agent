@@ -10,7 +10,7 @@ from docx import Document
 
 from city_agent.adapter import redact_public, validate_predictions_v1, write_predictions_v1
 from city_agent.document_parser import parse_document_bytes
-from city_agent.extractor import extract_report
+from city_agent.extractor import extract_report, extract_structured_tables
 from city_agent.index import NgramIndex
 from city_agent.schema import DiseaseRecord, PredictionRecord, ReportPrediction
 
@@ -60,6 +60,17 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(record.prediction.bridge_name, "测试桥")
         self.assertEqual(record.prediction.diseases[0].evidence_ids, ["table:0:1"])
         self.assertEqual([item.source_id for item in record.prediction.evidence], ["table:0:1"])
+
+    def test_official_disease_table_is_kept_complete(self) -> None:
+        report = parse_document_bytes(make_docx(), "sample.docx")
+        # The fixture uses the same semantic headers as official disease
+        # tables, while keeping the document intentionally small.
+        report.blocks[1].text = "序号 | 病害位置 | 病害类型 | 病害描述 | 是否新增 | 上一次定检状态 | 发展程度"
+        report.blocks[2].text = "1 | 1号桥墩 | 裂缝 | 竖向裂缝 0.20mm | 新增 | 无 | 新出现"
+        diseases, recommendations = extract_structured_tables(report)
+        self.assertEqual(len(diseases), 1)
+        self.assertEqual(diseases[0].location, "1号桥墩")
+        self.assertTrue(diseases[0].is_new)
 
     def test_docx_parser_and_source_ids(self) -> None:
         report = parse_document_bytes(make_docx(), "sample.docx")

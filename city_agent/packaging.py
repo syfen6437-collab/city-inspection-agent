@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 
-def package_submission(project_root: str | Path, output_path: str | Path) -> Path:
+def package_submission(project_root: str | Path, output_path: str | Path, result_dir: str | Path = "result") -> Path:
     root = Path(project_root)
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -29,9 +29,16 @@ def package_submission(project_root: str | Path, output_path: str | Path) -> Pat
             for item in design_source.iterdir():
                 if item.is_file() and item.suffix.lower() in {".md", ".docx", ".pdf"}:
                     shutil.copy2(item, design / item.name)
-        result_source = root / "result"
+        result_source = Path(result_dir)
+        if not result_source.is_absolute():
+            result_source = root / result_source
         if result_source.exists():
             for item in result_source.iterdir():
+                # The platform matches result documents to input stems. Older
+                # local runs used a ``_结果`` suffix; never include those stale
+                # documents in a new submission package.
+                if item.is_file() and item.name.endswith("_结果.docx"):
+                    continue
                 if item.is_file() and item.suffix.lower() in {".json", ".docx", ".jsonl"}:
                     shutil.copy2(item, result / item.name)
         with tarfile.open(target, "w:gz") as archive:
