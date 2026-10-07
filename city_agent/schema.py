@@ -39,6 +39,16 @@ class DiseaseRecord:
 
 
 @dataclass
+class RecommendationRecord:
+    category: str | None = None
+    content: str | None = None
+    location: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class ReportPrediction:
     bridge_name: str | None = None
     report_number: str | None = None
@@ -47,10 +57,18 @@ class ReportPrediction:
     overall_score: float | None = None
     overall_grade: str | None = None
     component_scores: dict[str, Any] = field(default_factory=dict)
+    previous_overall_score: str | None = None
+    previous_overall_grade: str | None = None
+    disease_trend: str | None = None
     summary: str | None = None
     key_risks: list[str] = field(default_factory=list)
+    detailed_conclusion: list[str] = field(default_factory=list)
+    disease_causes: list[str] = field(default_factory=list)
+    disposal_recommendations: list[str] = field(default_factory=list)
+    safety_impacts: list[str] = field(default_factory=list)
     diseases: list[DiseaseRecord] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
+    recommendation_details: list[RecommendationRecord] = field(default_factory=list)
     standards: list[str] = field(default_factory=list)
     evidence: list[EvidenceSpan] = field(default_factory=list)
 
@@ -60,13 +78,19 @@ class ReportPrediction:
             raise ValueError("模型输出必须是 JSON 对象")
         allowed = {
             "bridge_name", "report_number", "inspection_date", "inspection_year",
-            "overall_score", "overall_grade", "component_scores", "summary",
-            "key_risks", "diseases", "recommendations", "standards", "evidence",
+            "overall_score", "overall_grade", "component_scores", "previous_overall_score",
+            "previous_overall_grade", "disease_trend", "summary", "key_risks",
+            "detailed_conclusion", "disease_causes", "disposal_recommendations", "safety_impacts",
+            "diseases", "recommendations", "recommendation_details",
+            "standards", "evidence",
         }
         unknown = set(value) - allowed
         if unknown:
             raise ValueError(f"模型输出包含未声明字段：{sorted(unknown)}")
-        for key in ("bridge_name", "report_number", "inspection_date", "overall_grade", "summary"):
+        for key in (
+            "bridge_name", "report_number", "inspection_date", "overall_grade",
+            "previous_overall_score", "previous_overall_grade", "disease_trend", "summary",
+        ):
             if value.get(key) is not None and not isinstance(value[key], str):
                 raise ValueError(f"{key} 必须是字符串或 null")
         diseases = []
@@ -93,6 +117,24 @@ class ReportPrediction:
                 raise ValueError("disease.evidence_ids 只能包含字符串")
             disease.evidence_ids = [str(x) for x in disease.evidence_ids if x]
             diseases.append(disease)
+        recommendation_details = []
+        raw_recommendation_details = value.get("recommendation_details")
+        if raw_recommendation_details is None:
+            raw_recommendation_details = []
+        if not isinstance(raw_recommendation_details, list):
+            raise ValueError("recommendation_details 必须是数组")
+        for item in raw_recommendation_details:
+            if not isinstance(item, dict):
+                raise ValueError("recommendation_details 每项必须是对象")
+            unknown = set(item) - set(RecommendationRecord.__dataclass_fields__)
+            if unknown:
+                raise ValueError(f"recommendation_details 包含未声明字段：{sorted(unknown)}")
+            for key in RecommendationRecord.__dataclass_fields__:
+                if item.get(key) is not None and not isinstance(item[key], str):
+                    raise ValueError(f"recommendation_details.{key} 必须是字符串或 null")
+            recommendation_details.append(RecommendationRecord(**{
+                key: item.get(key) for key in RecommendationRecord.__dataclass_fields__
+            }))
         evidence = []
         raw_evidence = value.get("evidence")
         if raw_evidence is None:
@@ -127,10 +169,18 @@ class ReportPrediction:
             overall_score=score,
             overall_grade=value.get("overall_grade"),
             component_scores=value.get("component_scores") if isinstance(value.get("component_scores"), dict) else {},
+            previous_overall_score=value.get("previous_overall_score"),
+            previous_overall_grade=value.get("previous_overall_grade"),
+            disease_trend=value.get("disease_trend"),
             summary=value.get("summary"),
             key_risks=_string_list(value.get("key_risks"), "key_risks"),
+            detailed_conclusion=_string_list(value.get("detailed_conclusion"), "detailed_conclusion"),
+            disease_causes=_string_list(value.get("disease_causes"), "disease_causes"),
+            disposal_recommendations=_string_list(value.get("disposal_recommendations"), "disposal_recommendations"),
+            safety_impacts=_string_list(value.get("safety_impacts"), "safety_impacts"),
             diseases=diseases,
             recommendations=_string_list(value.get("recommendations"), "recommendations"),
+            recommendation_details=recommendation_details,
             standards=_string_list(value.get("standards"), "standards"),
             evidence=evidence,
         )
@@ -144,10 +194,18 @@ class ReportPrediction:
             "overall_score": self.overall_score,
             "overall_grade": self.overall_grade,
             "component_scores": self.component_scores,
+            "previous_overall_score": self.previous_overall_score,
+            "previous_overall_grade": self.previous_overall_grade,
+            "disease_trend": self.disease_trend,
             "summary": self.summary,
             "key_risks": self.key_risks,
+            "detailed_conclusion": self.detailed_conclusion,
+            "disease_causes": self.disease_causes,
+            "disposal_recommendations": self.disposal_recommendations,
+            "safety_impacts": self.safety_impacts,
             "diseases": [item.to_dict() for item in self.diseases],
             "recommendations": self.recommendations,
+            "recommendation_details": [item.to_dict() for item in self.recommendation_details],
             "standards": self.standards,
             "evidence": [item.to_dict() for item in self.evidence],
         }

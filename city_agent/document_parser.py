@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterable
 
 from docx import Document
+from docx.table import Table
 
 
 class UnsupportedDocumentError(RuntimeError):
@@ -25,6 +26,7 @@ class DocumentBlock:
     table_index: int | None = None
     row_index: int | None = None
     page: int | None = None
+    cells: list[str] | None = None
 
     def to_dict(self) -> dict:
         return {key: value for key, value in asdict(self).items() if value is not None}
@@ -65,16 +67,20 @@ def _block_id(kind: str, index: int, row: int | None = None) -> str:
 def parse_docx_bytes(data: bytes, file_name: str) -> ParsedReport:
     document = Document(io.BytesIO(data))
     blocks: list[DocumentBlock] = []
-    for index, paragraph in enumerate(document.paragraphs):
-        text = normalize_text(paragraph.text)
-        if text:
-            blocks.append(DocumentBlock(_block_id("paragraph", index), text, "paragraph"))
-    for table_index, table in enumerate(document.tables):
-        for row_index, row in enumerate(table.rows):
-            values = [normalize_text(cell.text) for cell in row.cells]
-            text = " | ".join(values).strip(" |")
+    paragraph_index = table_index = 0
+    for item in document.iter_inner_content():
+        if isinstance(item, Table):
+            for row_index, row in enumerate(item.rows):
+                values = [normalize_text(cell.text) for cell in row.cells]
+                text = " | ".join(values)
+                if any(values):
+                    blocks.append(DocumentBlock(_block_id("table", table_index, row_index), text, "table", table_index, row_index, cells=values))
+            table_index += 1
+        else:
+            text = normalize_text(item.text)
             if text:
-                blocks.append(DocumentBlock(_block_id("table", table_index, row_index), text, "table", table_index, row_index))
+                blocks.append(DocumentBlock(_block_id("paragraph", paragraph_index), text, "paragraph"))
+            paragraph_index += 1
     digest = hashlib.sha256(data).hexdigest()[:16]
     return ParsedReport(digest, Path(file_name).name, ".docx", blocks, extract_source_metadata(blocks))
 
@@ -94,6 +100,7 @@ def _convert_doc_with_word(data: bytes, file_name: str) -> bytes:
         word = win32com.client.DispatchEx("Word.Application")
         word.Visible = False
         word.DisplayAlerts = 0
+        word.AutomationSecurity = 3
         document = word.Documents.Open(str(source), ReadOnly=True, AddToRecentFiles=False)
         document.SaveAs2(str(target), FileFormat=16)
         document.Close(False)
@@ -123,6 +130,9 @@ def parse_document_bytes(data: bytes, file_name: str) -> ParsedReport:
         converted = _convert_doc_with_word(data, file_name)
         report = parse_docx_bytes(converted, file_name)
         report.extension = ".doc"
+        # Word conversion changes package timestamps. Identity must follow
+        # original bytes, otherwise a resumed run cannot find its own reports.
+        report.report_id = hashlib.sha256(data).hexdigest()[:16]
         return report
     raise UnsupportedDocumentError(f"不支持的文件类型：{suffix or '<无扩展名>'}")
 

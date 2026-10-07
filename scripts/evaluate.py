@@ -36,8 +36,8 @@ def main() -> int:
         )
         predictions = str(Path(args.result_dir) / "predictions.v1.json")
     metric = evaluate_predictions(args.source, predictions, args.cache_dir, args.limit or None)
-    print(json.dumps(metric, ensure_ascii=False, indent=2))
-    return 0
+    print(json.dumps({key: value for key, value in metric.items() if key not in {"records", "failures"}}, ensure_ascii=False, indent=2))
+    return 0 if metric["complete"] else 1
 
 
 if __name__ == "__main__":
